@@ -5,7 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "bm25s>=0.3.11",
+    "chonkie[code]>=1.7.0",
+    "tree-sitter-language-pack<1.16",
     "fire>=0.7.1",
     "pydantic>=2.13.4",
     "tqdm>=4.70.0",
 ]
+
