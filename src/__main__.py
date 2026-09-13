@@ -2,8 +2,9 @@
 
 import fire
 
-from indexer import run_index
-from src.retriever.search import search
+from src.indexer import run_index
+from src.retriever.search import search, search_dataset
+from src.generator.generate import answer, answer_dataset
 from src.models import (
     MinimalSource,
     StudentSearchResults,
@@ -35,6 +36,43 @@ class CLI:
                 f"{src.file_path}"
                 f"[{src.first_character_index}:{src.last_character_index}]"
             )
+
+    def search_dataset(
+        self,
+        dataset_path: str,
+        k: int = 10,
+        save_directory: str = "data/output/search_results",
+    ) -> None:
+        """Search a whole dataset of questions and save results.
+        Args:
+        """
+
+        search_dataset(
+            dataset_path=dataset_path, k=k, save_directory=save_directory
+        )
+
+    def answer(self, query: str, k: int = 10) -> None:
+        """Answer a single query using retrieved context."""
+
+        result = answer(query, k=k)
+        print(f"Q: {result['question']}\nA: {result['answer']}\nSources:")
+        for src in result["retrieved_sources"]:
+            print(
+                f"  {src.file_path} "
+                f"[{src.first_character_index}:{src.last_character_index}]"
+            )
+
+    def answer_dataset(
+        self,
+        student_search_results_path: str,
+        save_directory: str = "data/output/search_results_and_answer",
+    ) -> None:
+        """Generate answer for a whole dataset."""
+
+        answer_dataset(
+            student_search_results_path=student_search_results_path,
+            save_directory=save_directory,
+        )
 
 
 def main() -> None:

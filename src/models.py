@@ -20,6 +20,7 @@ class AnsweredQuestion(UnansweredQuestion):
 
 
 class RagDataset(BaseModel):
+    # union means the list can hold either answer or unanswer questions or a mix of both
     rag_questions: List[Union[AnsweredQuestion, UnansweredQuestion]]
 
 
