@@ -15,9 +15,9 @@ MIN_IOU = 0.05
 
 def _iou(a: MinimalSource, b: MinimalSource) -> float:
     """Intersection-over-Union between two character ranges.
-
+    Assumes a.file_path == b.file_path; the caller must check that first.
     Returns:
-        A float in [0, 1]. Assumes a.file_path == b.file_path; the caller must check that first.
+        A float in [0, 1].
     """
 
     a_start, a_end = a.first_character_index, a.last_character_index
@@ -55,10 +55,14 @@ class RecallResult:
     def summary(self) -> str:
         return (
             f"Questions evaluated: {self.num_questions}\n"
-            f"Recall@1:   {self.recall_at_1:.3f} ({self.recall_at_1 * 100:.1f}%)\n"
-            f"Recall@3:   {self.recall_at_3:.3f} ({self.recall_at_3 * 100:.1f}%)\n"
-            f"Recall@5:   {self.recall_at_5:.3f} ({self.recall_at_5 * 100:.1f}%)\n"
-            f"Recall@10:  {self.recall_at_10:.3f} ({self.recall_at_10 * 100:.1f}%)\n"
+            f"Recall@1:   {self.recall_at_1:.3f} "
+            f"({self.recall_at_1 * 100:.1f}%)\n"
+            f"Recall@3:   {self.recall_at_3:.3f} "
+            f"({self.recall_at_3 * 100:.1f}%)\n"
+            f"Recall@5:   {self.recall_at_5:.3f} "
+            f"({self.recall_at_5 * 100:.1f}%)\n"
+            f"Recall@10:  {self.recall_at_10:.3f} "
+            f"({self.recall_at_10 * 100:.1f}%)\n"
         )
 
 
@@ -103,23 +107,23 @@ def evaluate(
             gt_by_id[q.question_id] = q
 
     ks = [1, 3, 5, 10]
-    recalls = {k: [] for k in ks}
+    recalls: dict[int, list[float]] = {k: [] for k in ks}
     per_question: list[dict] = []
     for entry in student_results.search_results:
         gt = gt_by_id.get(entry.question_id)
         if gt is None:
             # Not in the ground-truth set; skip.
             continue
-        row = {
+        row: dict = {
             "question_id": entry.question_id,
             "question": entry.question,
             "num_gt_sources": len(gt.sources),
         }
         for k in ks:
-            r = _recall_at_k(gt.sources, entry.retrieved_sources, k)
-            if r >= 0:
-                recalls[k].append(r)
-                row[f"recall@{k}"] = r
+            recall_value = _recall_at_k(gt.sources, entry.retrieved_sources, k)
+            if recall_value >= 0:
+                recalls[k].append(recall_value)
+                row[f"recall@{k}"] = recall_value
 
         per_question.append(row)
 
@@ -137,14 +141,17 @@ def evaluate(
     )
 
     if show_failures > 0:
-        failures = [r for r in per_question if r.get("recall@5", 0.0) < 1.0]
+        failures = [
+            row for row in per_question if row.get("recall@5", 0.0) < 1.0
+        ]
         if failures:
             print(
                 f"\n--- {len(failures)} failing questions (recall@5 < 1.0) ---"
             )
             for r in failures[:show_failures]:
                 print(
-                    f"[{r['recall@5']:.2f}] {r['question_id']}: {r['question']}"
+                    f"[{r['recall@5']:.2f}] "
+                    f"{r['question_id']}: {r['question']}"
                 )
 
     return result

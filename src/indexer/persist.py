@@ -1,10 +1,8 @@
 """Build and persist the BM25 index and chunk metadata."""
 
 import json
-from os.path import exists
 import pickle
 from pathlib import Path
-from typing import Iterable
 
 import bm25s
 
@@ -51,7 +49,8 @@ def _build_bm25(chunks: list[IndexedChunk]) -> bm25s.BM25:
     """Build a BM25 index over the chunk texts."""
 
     texts = [chunk.text for chunk in chunks]
-    # tokenize: split on whitespace + punctuation, keep identifier-like tokens (e.g. user_id)
+    # tokenize: split on whitespace + punctuation,
+    # keep identifier-like tokens (e.g. user_id)
     # stopword: filter out common low-value english word ("the", "and")
     # stemmer=None: words will not be chopped down to their base roots
     # NOTE: stemming is harmful for code. Test with or without stopwords

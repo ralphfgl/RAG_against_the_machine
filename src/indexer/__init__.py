@@ -1,6 +1,5 @@
 """Indexing pipeline: walk corpus, chunk and persist."""
 
-from pathlib import Path
 from tqdm import tqdm
 
 from .walker import walk_corpus
@@ -42,6 +41,6 @@ def run_index(
     persist_index(all_chunks)
 
     print(
-        f"Indexing complete! Indexed {len(all_chunks)} chunks under {INDEX_DIR}/"
+        f"Indexing complete! Indexed {len(all_chunks)} chunks in {INDEX_DIR}/"
     )
     return len(all_chunks)

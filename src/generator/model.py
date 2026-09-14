@@ -1,8 +1,14 @@
 """Load and manage the Qwen3-0.6B model."""
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 
+from typing import Tuple
 
 MODEL_NAME = "Qwen/Qwen3-0.6B"
 
@@ -10,7 +16,7 @@ _model = None
 _tokenizer = None
 
 
-def _load():
+def _load() -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
     """Load the model and tokenizer (once)."""
     global _model, _tokenizer
     if _model is not None:
@@ -69,5 +75,6 @@ def generate(
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+    generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]  # noqa: E203
+    text: str = tokenizer.decode(generated_ids, skip_special_tokens=True)
+    return text.strip()

@@ -8,9 +8,7 @@ from tqdm import tqdm
 from src.models import (
     MinimalAnswer,
     MinimalSource,
-    RagDataset,
     StudentSearchResultsAndAnswer,
-    UnansweredQuestion,
 )
 from src.retriever.search import search_with_text
 from src.generator.prompt import build_prompt
@@ -53,7 +51,7 @@ def answer(query: str, k: int = 10) -> dict:
         return {
             "question": query,
             "retrieved_sources": [],
-            "answer": "I cannot answer this question from the retrieved sources.",
+            "answer": "I cant answer from the retrieved sources.",
         }
 
     prompt = build_prompt(query, trimmed)
@@ -80,7 +78,8 @@ def answer_dataset(
     """
     Generate answers for a whole dataset.
     Args:
-        student_search_results_path: Path to the JSON produced by search_dataset.
+        student_search_results_path: Path to the JSON
+            produced by search_dataset.
         save_directory: Where to write the output JSON.
 
     Returns:

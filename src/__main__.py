@@ -6,11 +6,6 @@ from src.indexer import run_index
 from src.retriever.search import search, search_dataset
 from src.generator.generate import answer, answer_dataset
 from src.evaluate.recall import evaluate
-from src.models import (
-    MinimalSource,
-    StudentSearchResults,
-    MinimalSearchResults,
-)
 
 
 class CLI:

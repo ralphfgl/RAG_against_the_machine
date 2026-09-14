@@ -20,7 +20,6 @@ _code_chunker: CodeChunker | None = None
 _markdown_chunker: RecursiveChunker | None = None
 
 
-# code chunker is fixed in size after initialization and silently won't change size after.
 def _get_code_chunker(max_chunk_size: int) -> CodeChunker:
     global _code_chunker
     if _code_chunker is None:
@@ -54,7 +53,7 @@ def _find_offset(
 
     idx = content.find(chunk_text, search_start)
     if idx == -1:
-        # fallback: search from the begining (because of whitespace normalization by the chunker)
+        # fallback: search from the begining (ws normalization from chunker)
         idx = content.find(chunk_text)
         if idx == -1:
             return -1, -1
@@ -64,7 +63,8 @@ def _find_offset(
 def chunk_file(
     corpus_file: CorpusFile, max_chunk_size: int
 ) -> list[IndexedChunk]:
-    """Split a single corpus file into indexed chunks. Ensure every chunk is at most max_chunk_size.
+    """Split a single corpus file into indexed chunks.
+    Ensure every chunk is at most max_chunk_size.
     Args:
     Returns:
     """
