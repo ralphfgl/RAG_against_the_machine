@@ -3,6 +3,7 @@ UV_PY = uv run
 
 
 
+#FIX: THE INSTALL IS NOT GOOD
 install:
 	uv sync --cache-dir ~/goinfre/.uv_cache sync
 

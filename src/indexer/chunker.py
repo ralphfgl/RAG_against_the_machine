@@ -24,7 +24,7 @@ _markdown_chunker: RecursiveChunker | None = None
 def _get_code_chunker(max_chunk_size: int) -> CodeChunker:
     global _code_chunker
     if _code_chunker is None:
-        code_chunker = CodeChunker(
+        _code_chunker = CodeChunker(
             language="python", chunk_size=max_chunk_size, tokenizer="character"
         )
     return _code_chunker
