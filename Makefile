@@ -6,6 +6,7 @@ NAME        := rag_against_the_machine
 PYTHON      := uv run python
 MAIN        := -m src
 
+<<<<<<< HEAD
 # --- Inputs ---------------------------------------------------------------
 # The archive is NOT part of the repo. It is provided during review, or
 # the files are already in place. All setup steps are idempotent.
@@ -14,6 +15,11 @@ EXTRACT_DIR       := .extracted
 VLLM_ZIP          := vllm-0.10.1.zip
 DATASETS_ZIP      := datasets_public.zip
 MOULINETTE_ZIP    := moulinette.zip
+=======
+#FIX: THE INSTALL IS NOT GOOD
+install:
+	uv sync --cache-dir ~/goinfre/.uv_cache sync
+>>>>>>> 8f3ea0854038600ccf75f49d927c901159e673c2
 
 # --- Outputs --------------------------------------------------------------
 CORPUS_ROOT       := data/raw/vllm-0.10.1

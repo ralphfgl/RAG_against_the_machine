@@ -5,11 +5,7 @@ import fire
 from src.indexer import run_index
 from src.retriever.search import search, search_dataset
 from src.generator.generate import answer, answer_dataset
-from src.models import (
-    MinimalSource,
-    StudentSearchResults,
-    MinimalSearchResults,
-)
+from src.evaluate.recall import evaluate
 
 
 class CLI:
@@ -73,6 +69,24 @@ class CLI:
             student_search_results_path=student_search_results_path,
             save_directory=save_directory,
         )
+
+    def evaluate(
+        self, student_search_results_path: str, dataset_path: str
+    ) -> None:
+        """Compute recall@k of student results against ground truth.
+
+        Args:
+            student_search_results_path: Output of search_dataset
+            dataset_path: ground-truth AnsweredQuestions dataset.
+        """
+
+        result = evaluate(
+            student_search_results_path=student_search_results_path,
+            dataset_path=dataset_path,
+        )
+        print("Evaluation Results")
+        print("==================")
+        print(result.summary())
 
 
 def main() -> None:

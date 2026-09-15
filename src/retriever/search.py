@@ -1,7 +1,5 @@
 """Search the persisted BM25 index."""
 
-from typing import NamedTuple
-
 import bm25s
 import json
 from tqdm import tqdm
@@ -46,15 +44,17 @@ def search(query: str, k: int = 10) -> list[MinimalSource]:
     retriever, chunks = _ensure_loaded()
     # tokenize the query the same way as the corpus
     query_tokens = bm25s.tokenize(query, stopwords="en", stemmer=None)
-    # retrieve returns a 2-tuple: result-> the ranked document indices (which chunk matched, best first); _scores -> the corresponding BM25 relevance scores
-    # result is a 2D array (shape(num_queries, k)) cause bm25s can handle batch queries in parrallel
+    # retrieve returns a 2-tuple:
+    # result-> the ranked document indices (which chunk matched, best first);
+    # _scores -> the corresponding BM25 relevance scores
+    # result is a 2D array (shape(num_queries, k))
+    # because bm25s can handle batch queries in parrallel
     results, _scores = retriever.retrieve(
         query_tokens, k=k, show_progress=False
     )
     # ranked list of chunk for 1 query
     top_indices = results[0]
     sources: list[MinimalSource] = []
-    # idx is a chunk index from BM25. index of BM25 correspond to record N in chunks.jsonl. That positional correspondance is the whole contract between the two file.
     for idx in top_indices:
         # bm25s returns indices as NumPy integer types rather than python int
         chunk = chunks[int(idx)]
@@ -125,7 +125,8 @@ def load_chunk_text(source: MinimalSource) -> str:
 
 def search_with_text(query: str, k: int = 10) -> list[dict]:
     """Like search(), but returns dicts that also include th chunk text.
-    Returns a list of {"file_path", "first_character_index", "last_character_index", "text"}
+    Returns a list of {"file_path", "first_character_index",
+        "last_character_index", "text"}
     """
 
     sources = search(query, k=k)
