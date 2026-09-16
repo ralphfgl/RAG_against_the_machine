@@ -53,17 +53,26 @@ def _build_bm25(chunks: list[IndexedChunk]) -> bm25s.BM25:
     # texts = [chunk.text for chunk in chunks]
     texts = []
     for chunk in chunks:
-        if chunk.file_type == "code":
-            texts.append(split_identifiers(chunk.text))
-        else:
-            texts.append(_enrich_markdown(chunk.text))
+        path_tokens = chunk.file_path.replace("/", " ").replace("\\", " ")
+        basename = Path(chunk.file_path).name
+        header = f"{path_tokens} {basename}"
+        body = (
+            split_identifiers(chunk.text)
+            if chunk.file_type == "code"
+            else _enrich_markdown(chunk.text)
+        )
+        texts.append(f"{header} {body}")
+        # if chunk.file_type == "code":
+        #     texts.append(split_identifiers(chunk.text))
+        # else:
+        #     texts.append(_enrich_markdown(chunk.text))
     # tokenize: split on whitespace + punctuation,
     # keep identifier-like tokens (e.g. user_id)
     # stopword: filter out common low-value english word ("the", "and")
     # stemmer=None: words will not be chopped down to their base roots
     # NOTE: stemming is harmful for code. Test with or without stopwords
     corpus_tokens = bm25s.tokenize(texts, stopwords="en", stemmer=None)
-    retriever = bm25s.BM25(k1=0.79, b=1.13)
+    retriever = bm25s.BM25(k1=0.82, b=1.13)
     retriever.index(corpus_tokens)
     return retriever
 

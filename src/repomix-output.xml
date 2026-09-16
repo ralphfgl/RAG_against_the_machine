@@ -1,0 +1,1192 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+evaluate/
+  __init__.py
+  recall.py
+generator/
+  __init__.py
+  generate.py
+  model.py
+  prompt.py
+indexer/
+  __init__.py
+  chunker.py
+  persist.py
+  tokenize_utils.py
+  walker.py
+retriever/
+  __init__.py
+  search.py
+__init__.py
+__main__.py
+models.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="evaluate/__init__.py">
+
+</file>
+
+<file path="evaluate/recall.py">
+"""Recall@k evaluation against a ground-truth dataset."""
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+from src.models import (
+    AnsweredQuestion,
+    MinimalSource,
+    RagDataset,
+    StudentSearchResults,
+)
+
+MIN_IOU = 0.05
+
+
+def _iou(a: MinimalSource, b: MinimalSource) -> float:
+    """Intersection-over-Union between two character ranges.
+    Assumes a.file_path == b.file_path; the caller must check that first.
+    Returns:
+        A float in [0, 1].
+    """
+
+    a_start, a_end = a.first_character_index, a.last_character_index
+    b_start, b_end = b.first_character_index, b.last_character_index
+    inter = max(0, min(a_end, b_end) - max(a_start, b_start))
+    if inter == 0:
+        return 0.0
+    union = max(a_end, b_end) - min(a_start, b_start)
+    if union <= 0:
+        return 0.0
+    return inter / union
+
+
+def _source_found(
+    target: MinimalSource, candidates: list[MinimalSource]
+) -> bool:
+    for cand in candidates:
+        if cand.file_path != target.file_path:
+            continue
+        if _iou(cand, target) >= MIN_IOU:
+            return True
+    return False
+
+
+@dataclass
+class RecallResult:
+    k: int
+    num_questions: int
+    recall_at_1: float
+    recall_at_3: float
+    recall_at_5: float
+    recall_at_10: float
+    per_question: list[dict[str, Any]]
+
+    def summary(self) -> str:
+        return (
+            f"Questions evaluated: {self.num_questions}\n"
+            f"Recall@1:   {self.recall_at_1:.3f} "
+            f"({self.recall_at_1 * 100:.1f}%)\n"
+            f"Recall@3:   {self.recall_at_3:.3f} "
+            f"({self.recall_at_3 * 100:.1f}%)\n"
+            f"Recall@5:   {self.recall_at_5:.3f} "
+            f"({self.recall_at_5 * 100:.1f}%)\n"
+            f"Recall@10:  {self.recall_at_10:.3f} "
+            f"({self.recall_at_10 * 100:.1f}%)\n"
+        )
+
+
+def _recall_at_k(
+    gt_sources: list[MinimalSource],
+    retrieved: list[MinimalSource],
+    k: int,
+) -> float:
+    """Per-questoin recall at rank k."""
+    if not gt_sources:
+        # sentinel value to exclude questions with no ground truth
+        return -1.0
+    top_k = retrieved[:k]
+    found = sum(1 for gt in gt_sources if _source_found(gt, top_k))
+    return found / len(gt_sources)
+
+
+def evaluate(
+    student_search_results_path: str,
+    dataset_path: str,
+    show_failures: int = 10,
+) -> RecallResult:
+    """Compute recall@1/3/5/10 of student results vs. ground truth.
+    Args:
+        student_search_results_path: output of `search_dataset`.
+        dataset_path: ground-truth dataset (AnsweredQuestions).
+        show_failures: how many failing questions to print at the end.
+    Returns:
+        RecallResult with the aggregated metrics.
+    """
+
+    with open(student_search_results_path, encoding="utf-8") as f:
+        student_raw = json.load(f)
+    with open(dataset_path, encoding="utf-8") as f:
+        gt_raw = json.load(f)
+    student_results = StudentSearchResults.model_validate(student_raw)
+    gt_dataset = RagDataset.model_validate(gt_raw)
+    # index ground truth by question_id
+    gt_by_id: dict[str, AnsweredQuestion] = {}
+    for q in gt_dataset.rag_questions:
+        if isinstance(q, AnsweredQuestion):
+            gt_by_id[q.question_id] = q
+
+    ks = [1, 3, 5, 10]
+    recalls: dict[int, list[float]] = {k: [] for k in ks}
+    per_question: list[dict[str, Any]] = []
+    for entry in student_results.search_results:
+        gt = gt_by_id.get(entry.question_id)
+        if gt is None:
+            # Not in the ground-truth set; skip.
+            continue
+        row: dict[str, Any] = {
+            "question_id": entry.question_id,
+            "question": entry.question,
+            "num_gt_sources": len(gt.sources),
+        }
+        for k in ks:
+            recall_value = _recall_at_k(gt.sources, entry.retrieved_sources, k)
+            if recall_value >= 0:
+                recalls[k].append(recall_value)
+                row[f"recall@{k}"] = recall_value
+
+        per_question.append(row)
+
+    def mean(xs: list[float]) -> float:
+        return sum(xs) / len(xs) if xs else 0.0
+
+    result = RecallResult(
+        k=student_results.k,
+        num_questions=len(per_question),  # passed GT filter
+        recall_at_1=mean(recalls[1]),
+        recall_at_3=mean(recalls[3]),
+        recall_at_5=mean(recalls[5]),
+        recall_at_10=mean(recalls[10]),
+        per_question=per_question,
+    )
+
+    if show_failures > 0:
+        failures = [
+            row for row in per_question if row.get("recall@5", 0.0) < 1.0
+        ]
+        if failures:
+            print(
+                f"\n--- {len(failures)} failing questions (recall@5 < 1.0) ---"
+            )
+            for r in failures[:show_failures]:
+                print(
+                    f"[{r['recall@5']:.2f}] "
+                    f"{r['question_id']}: {r['question']}"
+                )
+
+    return result
+</file>
+
+<file path="generator/__init__.py">
+
+</file>
+
+<file path="generator/generate.py">
+"""Answer generation: retrieve, prompt, generate."""
+
+import json
+from pathlib import Path
+from typing import Any
+
+from tqdm import tqdm
+
+from src.models import (
+    MinimalAnswer,
+    MinimalSource,
+    StudentSearchResultsAndAnswer,
+)
+from src.retriever.search import search_with_text
+from src.generator.prompt import build_prompt
+from src.generator.model import generate
+
+
+MAX_CONTEXT_CHARS = 6000  # about 3 chunks
+
+
+def _trim_context(
+    sources: list[dict[str, Any]], budget: int
+) -> list[dict[str, Any]]:
+    """Trim the retrieved sources so their combined text fits in the budget."""
+    kept = []
+    used = 0
+    for src in sources:
+        text = src["text"]
+        if used + len(text) > budget:
+            # Take a partial chunk
+            remaining = budget - used
+            if remaining < 200:  # too little to be useful
+                break
+            src = {**src, "text": text[:remaining]}
+        kept.append(src)
+        used += len(src["text"])
+        if used >= budget:
+            break
+    return kept
+
+
+def answer(query: str, k: int = 10) -> dict[str, Any]:
+    """
+    Answer a single query.
+
+    Returns a dict with:
+        question, retrieved_sources (list of MinimalSource), answer (str)
+    """
+    retrieved = search_with_text(query, k=k)
+    trimmed = _trim_context(retrieved, MAX_CONTEXT_CHARS)
+
+    if not trimmed:
+        return {
+            "question": query,
+            "retrieved_sources": [],
+            "answer": "I cant answer from the retrieved sources.",
+        }
+
+    prompt = build_prompt(query, trimmed)
+    raw_answer = generate(prompt, max_new_tokens=256, temperature=0.0)
+
+    return {
+        "question": query,
+        "retrieved_sources": [
+            MinimalSource(
+                file_path=src["file_path"],
+                first_character_index=src["first_character_index"],
+                last_character_index=src["last_character_index"],
+            )
+            for src in trimmed
+        ],
+        "answer": raw_answer,
+    }
+
+
+def answer_dataset(
+    student_search_results_path: str,
+    save_directory: str = "data/output/search_results_and_answer",
+) -> str:
+    """
+    Generate answers for a whole dataset.
+    Args:
+        student_search_results_path: Path to the JSON
+            produced by search_dataset.
+        save_directory: Where to write the output JSON.
+
+    Returns:
+        Path to the output file.
+    """
+    with open(student_search_results_path, encoding="utf-8") as f:
+        raw = json.load(f)
+
+    # The search dataset output uses StudentSearchResults, but the
+    # MinimalSearchResults shape is identical for our purposes.
+    from src.models import StudentSearchResults
+
+    search_results = StudentSearchResults.model_validate(raw)
+
+    answers: list[MinimalAnswer] = []
+    for entry in tqdm(
+        search_results.search_results, desc="Answering", unit="q"
+    ):
+        # Re-search with text so we get the actual snippets.
+        retrieved = search_with_text(entry.question, k=search_results.k)
+        trimmed = _trim_context(retrieved, MAX_CONTEXT_CHARS)
+
+        if not trimmed:
+            answer_text = (
+                "I cannot answer this question from the retrieved sources."
+            )
+        else:
+            prompt = build_prompt(entry.question, trimmed)
+            answer_text = generate(prompt, max_new_tokens=256, temperature=0.0)
+
+        answers.append(
+            MinimalAnswer(
+                question_id=entry.question_id,
+                question=entry.question,
+                retrieved_sources=[
+                    MinimalSource(
+                        file_path=src["file_path"],
+                        first_character_index=src["first_character_index"],
+                        last_character_index=src["last_character_index"],
+                    )
+                    for src in trimmed
+                ],
+                answer=answer_text,
+            )
+        )
+
+    dataset_stem = Path(student_search_results_path).stem
+    save_dir = Path(save_directory)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    output_path = save_dir / f"{dataset_stem}.json"
+
+    result = StudentSearchResultsAndAnswer(
+        search_results=answers, k=search_results.k
+    )
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(result.model_dump_json(indent=2))
+
+    print(f"Saved search_results_and_answer to {output_path}")
+    return str(output_path)
+</file>
+
+<file path="generator/model.py">
+"""Load and manage the Qwen3-0.6B model."""
+
+import torch
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
+
+from typing import Tuple
+
+MODEL_NAME = "Qwen/Qwen3-0.6B"
+
+_model = None
+_tokenizer = None
+
+
+def _load() -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+    """Load the model and tokenizer (once)."""
+    global _model, _tokenizer
+    if _model is not None:
+        return _model, _tokenizer
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else torch.float32
+
+    _tokenizer = AutoTokenizer.from_pretrained(
+        MODEL_NAME, trust_remote_code=True
+    )
+    _model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        torch_dtype=dtype,
+        trust_remote_code=True,
+    ).to(device)
+    _model.eval()
+
+    return _model, _tokenizer
+
+
+def generate(
+    prompt: str,
+    max_new_tokens: int = 256,
+    temperature: float = 0.0,
+) -> str:
+    """
+    Generate a completion from the prompt.
+
+    The prompt is wrapped in Qwen3's chat template so the model emits the
+    proper end-of-turn token. Repetition penalties prevent loops.
+    """
+    model, tokenizer = _load()
+
+    # Wrap the prompt in Qwen3's chat template. This is critical:
+    # without it, the model doesn't know when to stop and loops.
+    messages = [{"role": "user", "content": prompt}]
+    chat_prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        enable_thinking=False,  # disable Qwen3's "thinking" mode for speed
+    )
+
+    inputs = tokenizer(chat_prompt, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=temperature > 0.0,
+            temperature=temperature if temperature > 0.0 else 1.0,
+            # used for stopping the loop
+            repetition_penalty=1.15,
+            no_repeat_ngram_size=3,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]  # noqa: E203
+    text: str = tokenizer.decode(generated_ids, skip_special_tokens=True)
+    return text.strip()
+</file>
+
+<file path="generator/prompt.py">
+"""Prompt template for grounded answer generation."""
+
+from typing import Any
+
+SYSTEM_INSTRUCTIONS = (
+    "You are a technical assistant answering questions about the vLLM "
+    "codebase.\n\n"
+    "You will be given:\n"
+    "1. A set of retrieved source snippets from the vLLM repository.\n"
+    "2. A question.\n\n"
+    "You task: answer the question using ONLY the information in the "
+    "snippets.\n\n"
+    "Rules:\n"
+    '- If the snippets do not contain the answer, reply exactly: "I cannot '
+    'answer this question from the retrieved sources."\n'
+    "- Do not invent file paths, function names, or API details that are "
+    "not in the snippets.\n"
+    "- Be concise. One short paragraph, or a short bullet list.\n"
+    "- If the snippets contain code, you may quote it verbatim to support "
+    "your answer."
+)
+
+
+def build_prompt(question: str, sources: list[dict[str, Any]]) -> str:
+    """
+    Build the full prompt for the model.
+    Args:
+            question: The user's question.
+            sources: A list of dicts with keys "file_path" and "text"
+    Returns:
+            A single prompt ready to feed to the tokenizer.
+    """
+
+    snippets_parts = []
+    for i, src in enumerate(sources, start=1):
+        snippets_parts.append(
+            f"[Source {i}] {src['file_path']}\n```\n{src['text']}\n```"
+        )
+    snippets = "\n\n".join(snippets_parts)
+    return (
+        f"{SYSTEM_INSTRUCTIONS}\n\n"
+        f"=== Retrieved sources ===\n"
+        f"{snippets}\n\n"
+        f"=== Question ===\n"
+        f"{question}\n\n"
+        f"=== Answer ===\n"
+    )
+</file>
+
+<file path="indexer/__init__.py">
+"""Indexing pipeline: walk corpus, chunk and persist."""
+
+from tqdm import tqdm
+
+from .walker import walk_corpus
+from .chunker import chunk_file, IndexedChunk
+from .persist import persist_index, INDEX_DIR
+
+# NOTE: need for a CLI arg or config file, instead of hardcoded path
+DEFAULT_CORPUS_ROOT = "data/raw/vllm-0.10.1"
+
+
+def run_index(
+    max_chunk_size: int = 2000,
+    corpus_root: str = DEFAULT_CORPUS_ROOT,
+) -> int:
+    """
+    Run the full indexing pipeline.
+    Args:
+        max_chunk_size: Maximum number of characters per chunk.
+        corpus_root: Path to the corpus directory.
+    Returns:
+        Number of chunks indexed.
+    """
+
+    files = list(walk_corpus(corpus_root))
+    print(f"Found {len(files)} files to index.")
+
+    all_chunks: list[IndexedChunk] = []
+
+    for corpus_file in tqdm(files, desc="Chunking", unit="file"):
+        try:
+            chunks = chunk_file(corpus_file, max_chunk_size)
+            all_chunks.extend(chunks)
+        except Exception as e:
+            print(f"[WARN] Failed to chunk {corpus_file.file_path}: {e}")
+            continue
+
+    print(f"Produced {len(all_chunks)} chunks. Building BM25 index...")
+
+    persist_index(all_chunks)
+
+    print(
+        f"Indexing complete! Indexed {len(all_chunks)} chunks in {INDEX_DIR}/"
+    )
+    return len(all_chunks)
+</file>
+
+<file path="indexer/chunker.py">
+"""Chunk code and markdown files using Chonkie."""
+
+from typing import NamedTuple
+
+from chonkie import CodeChunker, RecursiveChunker, Chunk
+
+from .walker import CorpusFile
+
+
+class IndexedChunk(NamedTuple):
+    """A chunk ready to be indexed."""
+
+    file_path: str
+    first_character_index: int
+    last_character_index: int
+    text: str
+    file_type: str
+
+
+_code_chunker: CodeChunker | None = None
+_markdown_chunker: RecursiveChunker | None = None
+
+
+def _get_code_chunker(max_chunk_size: int) -> CodeChunker:
+    global _code_chunker
+    if _code_chunker is None:
+        _code_chunker = CodeChunker(
+            language="python", chunk_size=max_chunk_size, tokenizer="character"
+        )
+    return _code_chunker
+
+
+# tokenizer="character" -> count chunk size in character and not models token
+def _get_markdown_chunker(max_chunk_size: int) -> RecursiveChunker:
+    global _markdown_chunker
+    if _markdown_chunker is None:
+        _markdown_chunker = RecursiveChunker(
+            chunk_size=max_chunk_size, tokenizer="character"
+        )
+    return _markdown_chunker
+
+
+def _find_offset(
+    content: str, chunk_text: str, search_start: int
+) -> tuple[int, int]:
+    """Find the offsets of chunk_text within content, starting at search_start.
+    Args:
+        content: the entire text file
+        chunk_text: the text of one chunk returned by chonkie
+        search_start: search from this character position
+    Returns:
+        (start, end). If not found, returns (-1, -1).
+    """
+
+    idx = content.find(chunk_text, search_start)
+    if idx == -1:
+        # fallback: search from the begining (ws normalization from chunker)
+        idx = content.find(chunk_text)
+        if idx == -1:
+            return -1, -1
+    return idx, idx + len(chunk_text)
+
+
+def chunk_file(
+    corpus_file: CorpusFile, max_chunk_size: int
+) -> list[IndexedChunk]:
+    """Split a single corpus file into indexed chunks.
+    Ensure every chunk is at most max_chunk_size.
+    Args:
+    Returns:
+    """
+
+    if corpus_file.file_type == "code":
+        chunker = _get_code_chunker(max_chunk_size)
+    else:
+        chunker = _get_markdown_chunker(max_chunk_size)
+    try:
+        chunks: list[Chunk] = chunker.chunk(corpus_file.content)
+    except Exception:
+        # if chonkie fail fallback to naive fixed sized chunking
+        return _fallback_chunk(corpus_file, max_chunk_size)
+    indexed: list[IndexedChunk] = []
+    search_start = 0
+    for chunk in chunks:
+        text = chunk.text
+        if not text.strip():
+            continue
+        if len(text) > max_chunk_size:
+            text = text[:max_chunk_size]
+        start, end = _find_offset(corpus_file.content, text, search_start)
+        if start == -1:
+            # skip chunk we can't locate
+            continue
+        search_start = start  # to avoid passing overlap
+        indexed.append(
+            IndexedChunk(
+                file_path=corpus_file.file_path,
+                first_character_index=start,
+                last_character_index=end,
+                text=text,
+                file_type=corpus_file.file_type,
+            )
+        )
+    if not indexed:
+        # nothing valid came out of chonkie
+        return _fallback_chunk(corpus_file, max_chunk_size)
+    return indexed
+
+
+def _fallback_chunk(
+    corpus_file: CorpusFile, max_chunk_size: int
+) -> list[IndexedChunk]:
+    """Naive fixed-size chunking as a fallback.
+    Args:
+    Returns:
+    """
+
+    content = corpus_file.content
+    indexed: list[IndexedChunk] = []
+    for start in range(0, len(content), max_chunk_size):
+        end = min(start + max_chunk_size, len(content))
+        text = content[start:end]
+        if not text.strip():
+            continue
+        indexed.append(
+            IndexedChunk(
+                file_path=corpus_file.file_path,
+                first_character_index=start,
+                last_character_index=end,
+                text=text,
+                file_type=corpus_file.file_type,
+            )
+        )
+    return indexed
+</file>
+
+<file path="indexer/persist.py">
+"""Build and persist the BM25 index and chunk metadata."""
+
+import json
+import pickle
+from pathlib import Path
+from typing import Any
+
+import bm25s
+
+from .chunker import IndexedChunk
+from .tokenize_utils import split_identifiers, _enrich_markdown
+
+INDEX_DIR = Path("data/processed")
+BM25_INDEX_FILE = INDEX_DIR / "bm25_index.pkl"
+CHUNKS_FILE = INDEX_DIR / "chunks.jsonl"
+
+
+def _save_chunks(chunks: list[IndexedChunk]) -> None:
+    """Save chunks to a JSONL file
+    Args:
+    """
+
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    with open(CHUNKS_FILE, "w", encoding="utf-8") as f:
+        for chunk in chunks:
+            record = {
+                "file_path": chunk.file_path,
+                "first_character_index": chunk.first_character_index,
+                "last_character_index": chunk.last_character_index,
+                "text": chunk.text,
+            }
+            f.write(json.dumps(record) + "\n")
+
+
+def load_chunks() -> list[dict[str, Any]]:
+    """Load the saved chunks from JSONL."""
+
+    if not CHUNKS_FILE.exists():
+        raise FileNotFoundError(
+            f"Chunks file not found: {CHUNKS_FILE}. Run `index` first."
+        )
+    records = []
+    with open(CHUNKS_FILE, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                records.append(json.loads(line))
+    return records
+
+
+def _build_bm25(chunks: list[IndexedChunk]) -> bm25s.BM25:
+    """Build a BM25 index over the chunk texts."""
+
+    # texts = [chunk.text for chunk in chunks]
+    texts = []
+    for chunk in chunks:
+        if chunk.file_type == "code":
+            texts.append(split_identifiers(chunk.text))
+        else:
+            texts.append(_enrich_markdown(chunk.text))
+    # tokenize: split on whitespace + punctuation,
+    # keep identifier-like tokens (e.g. user_id)
+    # stopword: filter out common low-value english word ("the", "and")
+    # stemmer=None: words will not be chopped down to their base roots
+    # NOTE: stemming is harmful for code. Test with or without stopwords
+    corpus_tokens = bm25s.tokenize(texts, stopwords="en", stemmer=None)
+    retriever = bm25s.BM25(k1=0.79, b=1.13)
+    retriever.index(corpus_tokens)
+    return retriever
+
+
+def _save_bm25(retriever: bm25s.BM25) -> None:
+    """Save the BM25 retriver to disk"""
+
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    with open(BM25_INDEX_FILE, "wb") as f:
+        pickle.dump(retriever, f)
+
+
+def load_bm25() -> bm25s.BM25:
+    """Load the saved BM25 retriever from disk."""
+
+    if not BM25_INDEX_FILE.exists():
+        raise FileNotFoundError(
+            f"BM25 index not found: {BM25_INDEX_FILE}. Run `index` first."
+        )
+    with open(BM25_INDEX_FILE, "rb") as f:
+        return pickle.load(f)
+
+
+def persist_index(chunks: list[IndexedChunk]) -> None:
+    """Persist both the chunk metadata and BM25 index."""
+
+    _save_chunks(chunks)
+    retriever = _build_bm25(chunks)
+    _save_bm25(retriever)
+</file>
+
+<file path="indexer/tokenize_utils.py">
+import re
+
+_LOWER_TO_UPPER = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_ACRONYM_TO_WORD = re.compile(r"(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def split_identifiers(text: str) -> str:
+    """Expand snake_case and camelCase/PascalCase identifiers into words."""
+
+    expanded = text.replace("_", " ")
+    expanded = _LOWER_TO_UPPER.sub(" ", expanded)
+    expanded = _ACRONYM_TO_WORD.sub(" ", expanded)
+    if expanded == text:
+        return text
+    return f"{text} {expanded}"
+
+
+def _enrich_markdown(text: str) -> str:
+    headings = re.findall(r"^#{1,6}\s+(.+)$", text, re.M)
+    heading_text = " ".join(headings)
+    return f"{heading_text} {text}" if heading_text else text
+</file>
+
+<file path="indexer/walker.py">
+"""Walk the corpus directory an yield files with their content."""
+
+from pathlib import Path
+from typing import Iterator, NamedTuple
+
+
+class CorpusFile(NamedTuple):
+    """A file from the corpus."""
+
+    file_path: str
+    absolute_path: Path
+    file_type: str
+    content: str
+
+
+CODE_EXTENSIONS = {".py"}
+MARKDOWN_EXTENSIONS = {".md", ".mdx"}
+
+
+def _categorize(path: Path) -> str | None:
+    """Return 'code', 'markdown' or None if the file should be skipped."""
+
+    suffix = path.suffix.lower()
+    if suffix in CODE_EXTENSIONS:
+        return "code"
+    if suffix in MARKDOWN_EXTENSIONS:
+        return "markdown"
+    return None
+
+
+def walk_corpus(corpus_root: str) -> Iterator[CorpusFile]:
+    """Walk the corpus root and yield every code/markdown file.
+    Args:
+        corpus_root: Path to the corpus directory
+    Yields:
+        CorpusFile objects with file path, content and category.
+    """
+
+    root = Path(corpus_root)
+    if not root.is_dir():
+        raise FileNotFoundError(f"Corpus root not found: {corpus_root}")
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        category = _categorize(path)
+        if category is None:
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            # skip unreadable files silently
+            continue
+        if not content.strip():
+            continue
+        yield CorpusFile(
+            file_path=str(path),
+            absolute_path=path,
+            file_type=category,
+            content=content,
+        )
+</file>
+
+<file path="retriever/__init__.py">
+
+</file>
+
+<file path="retriever/search.py">
+"""Search the persisted BM25 index."""
+
+import bm25s
+import json
+from tqdm import tqdm
+from pathlib import Path
+from typing import Any
+
+from src.indexer.persist import load_bm25, load_chunks
+from src.models import (
+    MinimalSearchResults,
+    MinimalSource,
+    RagDataset,
+    StudentSearchResults,
+)
+from src.indexer.tokenize_utils import split_identifiers
+
+_bm25: bm25s.BM25 | None = None
+_chunks: list[dict[str, Any]] | None = None
+
+
+def _ensure_loaded() -> tuple[bm25s.BM25, list[dict[str, Any]]]:
+    """Load the BM25 index and chunk metadata (once)."""
+    global _bm25, _chunks
+    if _bm25 is None:
+        _bm25 = load_bm25()
+    if _chunks is None:
+        _chunks = load_chunks()
+    return _bm25, _chunks
+
+
+def search(query: str, k: int = 10) -> list[MinimalSource]:
+    """Return th top-k most relevant sources for a query.
+    Args:
+            query: The user's question.
+            k: Number of results to return.
+    Returns:
+            A list of MinimalSource objects, ranked by relevance.
+    """
+
+    if not query or not query.strip():
+        return []
+    if k <= 0:
+        return []
+
+    retriever, chunks = _ensure_loaded()
+    # tokenize the query the same way as the corpus
+    query_tokens = bm25s.tokenize(
+        split_identifiers(query), stopwords="en", stemmer=None
+    )
+    # retrieve returns a 2-tuple:
+    # result-> the ranked document indices (which chunk matched, best first);
+    # _scores -> the corresponding BM25 relevance scores
+    # result is a 2D array (shape(num_queries, k))
+    # because bm25s can handle batch queries in parrallel
+    results, _scores = retriever.retrieve(
+        query_tokens, k=k, show_progress=False
+    )
+    # ranked list of chunk for 1 query
+    top_indices = results[0]
+    sources: list[MinimalSource] = []
+    for idx in top_indices:
+        # bm25s returns indices as NumPy integer types rather than python int
+        chunk = chunks[int(idx)]
+        sources.append(
+            MinimalSource(
+                file_path=chunk["file_path"],
+                first_character_index=chunk["first_character_index"],
+                last_character_index=chunk["last_character_index"],
+            )
+        )
+    return sources
+
+
+def search_dataset(
+    dataset_path: str,
+    k: int = 10,
+    save_directory: str = "data/output/search_results",
+) -> str:
+    """Run search over a whole dataset of questions.
+    Args:
+        dataset_path: Path to the input dataset JSON.
+        k: number of sources per question.
+        save_directory: Directory where the output JSON will be written.
+    Returns:
+        Path to the output file.
+    """
+
+    with open(dataset_path, encoding="utf-8") as f:
+        raw = json.load(f)
+    rag_dataset = RagDataset.model_validate(raw)
+    search_results: list[MinimalSearchResults] = []
+    for question in tqdm(
+        rag_dataset.rag_questions, desc="Searching", unit="q"
+    ):
+        qid = question.question_id
+        qtext = question.question
+        sources = search(qtext, k=k)
+        search_results.append(
+            MinimalSearchResults(
+                question_id=qid,
+                question=qtext,
+                retrieved_sources=sources,
+            )
+        )
+    dataset_stem = Path(dataset_path).stem
+    save_dir = Path(save_directory)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    output_path = save_dir / f"{dataset_stem}.json"
+    student_results = StudentSearchResults(search_results=search_results, k=k)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(student_results.model_dump_json(indent=2))
+    print(f"Saved student_search_results to {output_path}")
+    return str(output_path)
+
+
+def load_chunk_text(source: MinimalSource) -> str:
+    """Load the text of a source by reading the relevant slice of the file"""
+
+    try:
+        with open(source.file_path, encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except OSError:
+        return ""
+    start = max(0, source.first_character_index)
+    end = min(len(content), source.last_character_index)
+    return content[start:end]
+
+
+def search_with_text(query: str, k: int = 10) -> list[dict[str, Any]]:
+    """Like search(), but returns dicts that also include th chunk text.
+    Returns a list of {"file_path", "first_character_index",
+        "last_character_index", "text"}
+    """
+
+    sources = search(query, k=k)
+    enriched = []
+    for src in sources:
+        enriched.append(
+            {
+                "file_path": src.file_path,
+                "first_character_index": src.first_character_index,
+                "last_character_index": src.last_character_index,
+                "text": load_chunk_text(src),
+            }
+        )
+    return enriched
+</file>
+
+<file path="__init__.py">
+
+</file>
+
+<file path="__main__.py">
+"""RAG against the machine — entry point."""
+
+import fire
+
+from src.indexer import run_index
+from src.retriever.search import search, search_dataset
+from src.generator.generate import answer, answer_dataset
+from src.evaluate.recall import evaluate
+
+
+class CLI:
+    """RAG against the machine — command line interface."""
+
+    def index(self, max_chunk_size: int = 2000) -> None:
+        """Index the corpus into a searchable BM25 index.
+
+        Args:
+            max_chunk_size: Maximum characters per chunk.
+        """
+        run_index(max_chunk_size=max_chunk_size)
+
+    def search(self, query: str, k: int = 10) -> None:
+        """Return the top-k sources for a single query.
+        Args:
+            query: the question to search for.
+            k: number of sources to return.
+        """
+
+        sources = search(query, k=k)
+        for src in sources:
+            print(
+                f"{src.file_path}"
+                f"[{src.first_character_index}:{src.last_character_index}]"
+            )
+
+    def search_dataset(
+        self,
+        dataset_path: str,
+        k: int = 10,
+        save_directory: str = "data/output/search_results",
+    ) -> None:
+        """Search a whole dataset of questions and save results.
+        Args:
+        """
+
+        search_dataset(
+            dataset_path=dataset_path, k=k, save_directory=save_directory
+        )
+
+    def answer(self, query: str, k: int = 10) -> None:
+        """Answer a single query using retrieved context."""
+
+        result = answer(query, k=k)
+        print(f"Q: {result['question']}\nA: {result['answer']}\nSources:")
+        for src in result["retrieved_sources"]:
+            print(
+                f"  {src.file_path} "
+                f"[{src.first_character_index}:{src.last_character_index}]"
+            )
+
+    def answer_dataset(
+        self,
+        student_search_results_path: str,
+        save_directory: str = "data/output/search_results_and_answer",
+    ) -> None:
+        """Generate answer for a whole dataset."""
+
+        answer_dataset(
+            student_search_results_path=student_search_results_path,
+            save_directory=save_directory,
+        )
+
+    def evaluate(
+        self, student_search_results_path: str, dataset_path: str
+    ) -> None:
+        """Compute recall@k of student results against ground truth.
+
+        Args:
+            student_search_results_path: Output of search_dataset
+            dataset_path: ground-truth AnsweredQuestions dataset.
+        """
+
+        result = evaluate(
+            student_search_results_path=student_search_results_path,
+            dataset_path=dataset_path,
+        )
+        print("Evaluation Results")
+        print("==================")
+        print(result.summary())
+
+
+def main() -> None:
+    fire.Fire(CLI)
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="models.py">
+from pydantic import BaseModel, Field
+from typing import List, Union
+import uuid
+
+
+class MinimalSource(BaseModel):
+    file_path: str
+    first_character_index: int
+    last_character_index: int
+
+
+class UnansweredQuestion(BaseModel):
+    question_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    question: str
+
+
+class AnsweredQuestion(UnansweredQuestion):
+    sources: List[MinimalSource]
+    answer: str
+
+
+class RagDataset(BaseModel):
+    rag_questions: List[Union[AnsweredQuestion, UnansweredQuestion]]
+
+
+class MinimalSearchResults(BaseModel):
+    question_id: str
+    question: str
+    retrieved_sources: List[MinimalSource]
+
+
+class MinimalAnswer(MinimalSearchResults):
+    answer: str
+
+
+class StudentSearchResults(BaseModel):
+    search_results: List[MinimalSearchResults]
+    k: int
+
+
+class StudentSearchResultsAndAnswer(BaseModel):
+    search_results: List[MinimalAnswer]
+    k: int
+</file>
+
+</files>

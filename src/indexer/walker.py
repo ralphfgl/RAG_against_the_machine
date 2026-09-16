@@ -14,7 +14,7 @@ class CorpusFile(NamedTuple):
 
 
 CODE_EXTENSIONS = {".py"}
-MARKDOWN_EXTENSIONS = {".md", ".mdx"}
+MARKDOWN_EXTENSIONS = {".md", ".mdx", ".txt"}
 
 
 def _categorize(path: Path) -> str | None:
