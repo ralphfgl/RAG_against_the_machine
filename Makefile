@@ -1,27 +1,13 @@
-# Makefile for RAG against the machine.
-# IMPORTANT: recipe lines must start with a TAB, not spaces.
-
 NAME        := rag_against_the_machine
 
 PYTHON      := uv run python
 MAIN        := -m src
 
-<<<<<<< HEAD
-# --- Inputs ---------------------------------------------------------------
-# The archive is NOT part of the repo. It is provided during review, or
-# the files are already in place. All setup steps are idempotent.
 ARCHIVE           := data+moulinette.tar.xz
 EXTRACT_DIR       := .extracted
 VLLM_ZIP          := vllm-0.10.1.zip
 DATASETS_ZIP      := datasets_public.zip
 MOULINETTE_ZIP    := moulinette.zip
-=======
-#FIX: THE INSTALL IS NOT GOOD
-install:
-	uv sync --cache-dir ~/goinfre/.uv_cache sync
->>>>>>> 8f3ea0854038600ccf75f49d927c901159e673c2
-
-# --- Outputs --------------------------------------------------------------
 CORPUS_ROOT       := data/raw/vllm-0.10.1
 UNANSWERED_DIR    := data/datasets/UnansweredQuestions
 ANSWERED_DIR      := data/datasets/AnsweredQuestions
@@ -31,7 +17,6 @@ ANSWER_OUT_DIR    := data/output/search_results_and_answer/UnansweredQuestions
 DOCS_DATASET      := dataset_docs_public.json
 CODE_DATASET      := dataset_code_public.json
 
-# --- Required rules (subject) ---------------------------------------------
 
 all: install
 
@@ -64,8 +49,8 @@ fclean: clean
 	@rm -rf $(EXTRACT_DIR)
 
 lint:
-	uv run flake8 .
-	uv run mypy . \
+	uv run flake8 src/
+	uv run mypy src/ \
 		--warn-return-any \
 		--warn-unused-ignores \
 		--ignore-missing-imports \
@@ -73,10 +58,8 @@ lint:
 		--check-untyped-defs
 
 lint-strict:
-	uv run flake8 .
-	uv run mypy . --strict
-
-# --- Setup sub-steps ------------------------------------------------------
+	uv run flake8 src/
+	uv run mypy src/ --strict
 
 _setup_dirs:
 	@mkdir -p data/raw
@@ -86,7 +69,6 @@ _setup_dirs:
 	@mkdir -p $(SEARCH_OUT_DIR)
 	@mkdir -p $(ANSWER_OUT_DIR)
 
-# Corpus: only extract if data/raw/vllm-0.10.1 is missing.
 _setup_corpus:
 	@if [ -d "$(CORPUS_ROOT)" ]; then \
 		echo "[install] Corpus already present at $(CORPUS_ROOT)"; \
@@ -102,7 +84,6 @@ _setup_corpus:
 		exit 1; \
 	fi
 
-# Datasets: only extract if the public docs dataset is missing.
 _setup_datasets:
 	@if [ -f "$(UNANSWERED_DIR)/$(DOCS_DATASET)" ]; then \
 		echo "[install] Datasets already present."; \
@@ -119,9 +100,6 @@ _setup_datasets:
 		exit 1; \
 	fi
 
-# Moulinette: prefer Fedora on modern glibc (Arch), fallback Ubuntu.
-# If neither the archive nor a local binary exists, warn but do not fail:
-# the evaluator will provide the moulinette themselves.
 _setup_moulinette:
 	@if [ -x "./moulinette" ]; then \
 		echo "[install] Moulinette already present at ./moulinette"; \
@@ -201,7 +179,6 @@ evaluate_code:
 
 evaluate: evaluate_docs evaluate_code
 
-# Full pipeline.
 bench: index search_dataset evaluate
 
 .PHONY: all install run debug clean fclean lint lint-strict \

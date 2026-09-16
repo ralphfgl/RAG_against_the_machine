@@ -16,3 +16,25 @@ dependencies = [
     "accelerate>=1.15.0",
 ]
 
+[dependency-groups]
+dev = [
+    "types-requests>=2.33.0.20260906",
+    "types-tqdm>=4.70.0.20260906",
+]
+
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "torch.*",
+    "transformers.*",
+    "pydantic.*",
+    "chonkie.*",
+    "bm25s.*",
+    "fire.*",
+    "tqdm.*",
+]
+ignore_missing_imports = true
+disallow_subclassing_any = false

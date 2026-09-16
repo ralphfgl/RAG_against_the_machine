@@ -1,5 +1,7 @@
 """Prompt template for grounded answer generation."""
 
+from typing import Any
+
 SYSTEM_INSTRUCTIONS = (
     "You are a technical assistant answering questions about the vLLM "
     "codebase.\n\n"
@@ -19,7 +21,7 @@ SYSTEM_INSTRUCTIONS = (
 )
 
 
-def build_prompt(question: str, sources: list[dict]) -> str:
+def build_prompt(question: str, sources: list[dict[str, Any]]) -> str:
     """
     Build the full prompt for the model.
     Args:

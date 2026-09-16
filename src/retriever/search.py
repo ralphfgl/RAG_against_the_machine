@@ -4,6 +4,7 @@ import bm25s
 import json
 from tqdm import tqdm
 from pathlib import Path
+from typing import Any
 
 from src.indexer.persist import load_bm25, load_chunks
 from src.models import (
@@ -12,12 +13,13 @@ from src.models import (
     RagDataset,
     StudentSearchResults,
 )
+from src.indexer.tokenize_utils import split_identifiers
 
 _bm25: bm25s.BM25 | None = None
-_chunks: list[dict] | None = None
+_chunks: list[dict[str, Any]] | None = None
 
 
-def _ensure_loaded() -> tuple[bm25s.BM25, list[dict]]:
+def _ensure_loaded() -> tuple[bm25s.BM25, list[dict[str, Any]]]:
     """Load the BM25 index and chunk metadata (once)."""
     global _bm25, _chunks
     if _bm25 is None:
@@ -43,7 +45,9 @@ def search(query: str, k: int = 10) -> list[MinimalSource]:
 
     retriever, chunks = _ensure_loaded()
     # tokenize the query the same way as the corpus
-    query_tokens = bm25s.tokenize(query, stopwords="en", stemmer=None)
+    query_tokens = bm25s.tokenize(
+        split_identifiers(query), stopwords="en", stemmer=None
+    )
     # retrieve returns a 2-tuple:
     # result-> the ranked document indices (which chunk matched, best first);
     # _scores -> the corresponding BM25 relevance scores
@@ -123,7 +127,7 @@ def load_chunk_text(source: MinimalSource) -> str:
     return content[start:end]
 
 
-def search_with_text(query: str, k: int = 10) -> list[dict]:
+def search_with_text(query: str, k: int = 10) -> list[dict[str, Any]]:
     """Like search(), but returns dicts that also include th chunk text.
     Returns a list of {"file_path", "first_character_index",
         "last_character_index", "text"}

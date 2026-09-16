@@ -14,6 +14,7 @@ class IndexedChunk(NamedTuple):
     first_character_index: int
     last_character_index: int
     text: str
+    file_type: str
 
 
 _code_chunker: CodeChunker | None = None
@@ -97,6 +98,7 @@ def chunk_file(
                 first_character_index=start,
                 last_character_index=end,
                 text=text,
+                file_type=corpus_file.file_type,
             )
         )
     if not indexed:
@@ -126,6 +128,7 @@ def _fallback_chunk(
                 first_character_index=start,
                 last_character_index=end,
                 text=text,
+                file_type=corpus_file.file_type,
             )
         )
     return indexed

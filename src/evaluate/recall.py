@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from src.models import (
     AnsweredQuestion,
@@ -50,7 +51,7 @@ class RecallResult:
     recall_at_3: float
     recall_at_5: float
     recall_at_10: float
-    per_question: list[dict]
+    per_question: list[dict[str, Any]]
 
     def summary(self) -> str:
         return (
@@ -108,13 +109,13 @@ def evaluate(
 
     ks = [1, 3, 5, 10]
     recalls: dict[int, list[float]] = {k: [] for k in ks}
-    per_question: list[dict] = []
+    per_question: list[dict[str, Any]] = []
     for entry in student_results.search_results:
         gt = gt_by_id.get(entry.question_id)
         if gt is None:
             # Not in the ground-truth set; skip.
             continue
-        row: dict = {
+        row: dict[str, Any] = {
             "question_id": entry.question_id,
             "question": entry.question,
             "num_gt_sources": len(gt.sources),

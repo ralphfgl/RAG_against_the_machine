@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 from tqdm import tqdm
 
@@ -18,7 +19,9 @@ from src.generator.model import generate
 MAX_CONTEXT_CHARS = 6000  # about 3 chunks
 
 
-def _trim_context(sources: list[dict], budget: int) -> list[dict]:
+def _trim_context(
+    sources: list[dict[str, Any]], budget: int
+) -> list[dict[str, Any]]:
     """Trim the retrieved sources so their combined text fits in the budget."""
     kept = []
     used = 0
@@ -37,7 +40,7 @@ def _trim_context(sources: list[dict], budget: int) -> list[dict]:
     return kept
 
 
-def answer(query: str, k: int = 10) -> dict:
+def answer(query: str, k: int = 10) -> dict[str, Any]:
     """
     Answer a single query.
 

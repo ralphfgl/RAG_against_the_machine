@@ -3,10 +3,12 @@
 import json
 import pickle
 from pathlib import Path
+from typing import Any
 
 import bm25s
 
 from .chunker import IndexedChunk
+from .tokenize_utils import split_identifiers, _enrich_markdown
 
 INDEX_DIR = Path("data/processed")
 BM25_INDEX_FILE = INDEX_DIR / "bm25_index.pkl"
@@ -30,7 +32,7 @@ def _save_chunks(chunks: list[IndexedChunk]) -> None:
             f.write(json.dumps(record) + "\n")
 
 
-def load_chunks() -> list[dict]:
+def load_chunks() -> list[dict[str, Any]]:
     """Load the saved chunks from JSONL."""
 
     if not CHUNKS_FILE.exists():
@@ -48,14 +50,20 @@ def load_chunks() -> list[dict]:
 def _build_bm25(chunks: list[IndexedChunk]) -> bm25s.BM25:
     """Build a BM25 index over the chunk texts."""
 
-    texts = [chunk.text for chunk in chunks]
+    # texts = [chunk.text for chunk in chunks]
+    texts = []
+    for chunk in chunks:
+        if chunk.file_type == "code":
+            texts.append(split_identifiers(chunk.text))
+        else:
+            texts.append(_enrich_markdown(chunk.text))
     # tokenize: split on whitespace + punctuation,
     # keep identifier-like tokens (e.g. user_id)
     # stopword: filter out common low-value english word ("the", "and")
     # stemmer=None: words will not be chopped down to their base roots
     # NOTE: stemming is harmful for code. Test with or without stopwords
     corpus_tokens = bm25s.tokenize(texts, stopwords="en", stemmer=None)
-    retriever = bm25s.BM25()
+    retriever = bm25s.BM25(k1=0.79, b=1.13)
     retriever.index(corpus_tokens)
     return retriever
 
