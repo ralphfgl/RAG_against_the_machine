@@ -72,7 +72,8 @@ def _build_bm25(chunks: list[IndexedChunk]) -> bm25s.BM25:
     # stemmer=None: words will not be chopped down to their base roots
     # NOTE: stemming is harmful for code. Test with or without stopwords
     corpus_tokens = bm25s.tokenize(texts, stopwords="en", stemmer=None)
-    retriever = bm25s.BM25(k1=0.82, b=1.13)
+    # retriever = bm25s.BM25(k1=0.82, b=1.13)
+    retriever = bm25s.BM25(k1=1.0, b=1.1)
     retriever.index(corpus_tokens)
     return retriever
 
